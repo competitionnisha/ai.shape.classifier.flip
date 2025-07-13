@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Shape Classifier</title>
+  <style>
+    body { font-family: Arial; text-align:center; padding:20px;}
+    video { max-width:100%; width:320px; height:240px; margin:auto; display:block; border:1px solid #ccc; border-radius:10px;}
+    button, input, select { margin:10px; padding:8px 12px; font-size:15px; }
+    #label-container div { font-size:18px; margin:8px;}
+    #formula-box { margin-top:20px; font-weight:bold; white-space:pre-line;}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8"></script>
+</head>
+<body>
+  <h1>🧠 AI Shape Classifier</h1>
+  <button onclick="startCamera()">📷 Start Camera</button>
+  <button onclick="flipCamera()">🔄 Flip Camera</button>
+  <button onclick="captureShape()" id="capture-btn" style="display:none;">📸 Capture Shape</button>
+  <button onclick="reset()" id="reset-btn" style="display:none;">🔁 Try Another Shape</button>
+  <video id="video" autoplay playsinline muted></video>
+  <div id="label-container"></div>
+  <div id="formula-box"></div>
+  <script>
+    const MODEL_URL = 'https://teachablemachine.withgoogle.com/models/1Ht45q_Jz/';
+    let model, maxPredictions, prediction, stream, freeze=false, facing='environment';
+    const video = document.getElementById('video');
+    const formulas = {
+      Rectangle: 'Area = l×b\nPerimeter = 2×(l+b)',
+      Triangle: 'Area = ½×b×h\nPerimeter = a+b+c',
+      Square: 'Area = side²\nPerimeter = 4×side',
+      Circle: 'Area = π×r²\nPerimeter = 2πr',
+      Hexagon: 'Area = (3√3×side²)/2\nPerimeter = 6×side'
+    };
+    async function loadModel(){
+      model = await tmImage.load(MODEL_URL+'model.json', MODEL_URL+'metadata.json');
+      maxPredictions = model.getTotalClasses();
+      document.getElementById('label-container').innerHTML = '';
+      for(let i=0;i<maxPredictions;i++)
+        document.getElementById('label-container').appendChild(document.createElement('div'));
+    }
+    async function startCamera(){
+      if(stream) stream.getTracks().forEach(t=>t.stop());
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:facing},audio:false});
+        video.srcObject = stream;
+        await loadModel();
+      } catch(e){
+        alert('Camera error: '+e.message);
+      }
+      freeze = false;
+      document.getElementById('capture-btn').style.display='inline-block';
+      predictLoop();
+    }
+    function flipCamera(){
+      facing = (facing==='user')?'environment':'user';
+      startCamera();
+    }
+    async function predictLoop(){
+      if(freeze||!model) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video,0,0);
+      let preds = await model.predict(canvas);
+      preds.sort((a,b)=>b.probability-a.probability);
+      prediction = preds[0];
+      document.getElementById('label-container').childNodes[0].innerHTML =
+        `🔷 Shape: ${prediction.className}<br>🎯 Confidence: ${(prediction.probability*100).toFixed(2)}%`;
+      setTimeout(predictLoop,500);
+    }
+    function captureShape(){
+      if(!prediction||prediction.probability<0.6){alert('No clear shape detected');return;}
+      freeze=true;
+      document.getElementById('formula-box').innerText = '📐 Formula:\n'+(formulas[prediction.className]||'');
+      document.getElementById('reset-btn').style.display='inline-block';
+      document.getElementById('capture-btn').style.display='none';
+    }
+    function reset(){
+      freeze=false;
+      document.getElementById('formula-box').innerText='';
+      document.getElementById('reset-btn').style.display='none';
+      document.getElementById('capture-btn').style.display='inline-block';
+      predictLoop();
+    }
+  </script>
+</body>
+</html>
